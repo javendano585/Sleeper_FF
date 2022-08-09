@@ -3,6 +3,7 @@ from datetime import date
 import json
 from pathlib import Path
 import pickle
+import time
 from typing import Any
 
 from sleeper_wrapper import League, Players
@@ -68,13 +69,19 @@ class SleeperLeague:
         if self.players == dict():
             current_players_file = self._get_players_filename()
             if current_players_file.is_file():
+                start_time = time.time()
                 print('Reading current players file.')
                 with open(current_players_file, 'rb') as f:
-                    self.players = pickle.load(f, protocol=pickle.HIGHEST_PROTOCOL)
+                    self.players = pickle.load(f)
+                duration = time.time() - start_time
+                print(f'Reading took {duration:.2} seconds')
             else:
+                start_time = time.time()
                 self._pull_players()
                 with open(current_players_file, 'wb') as f:
-                    pickle.dump(self.players, f)
+                    pickle.dump(self.players, f, protocol=pickle.HIGHEST_PROTOCOL)
+                duration = time.time() - start_time
+                print(f'Pull and dump took {duration:.2} seconds')
         return self.players
     
     def _get_players_filename(self) -> Path:
@@ -85,7 +92,7 @@ class SleeperLeague:
         return temp_folder / current_players_file
 
     def _clear_old_player_files(self, folder: Path, active_file: str) -> None:
-        for x in folder.glob('sleeper_players_*.json'):
+        for x in folder.glob('sleeper_players_*.*'):
             if x.is_file() and x.name != active_file:
                 x.unlink()
     

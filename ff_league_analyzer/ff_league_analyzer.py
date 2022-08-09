@@ -1,8 +1,7 @@
-from enum import Enum, auto
 from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
-from pathlib import Path
+import time
 
 from .ff_league import SleeperLeague
 
@@ -87,6 +86,7 @@ class SleeperLeagueAnalyzer:
 
     def build_players_df(self) -> pd.DataFrame:
         players_dict = self.league.get_data('players')
+        start_time = time.time()
         df = (
             pd.DataFrame(players_dict)
             .T
@@ -104,7 +104,9 @@ class SleeperLeagueAnalyzer:
                     )
             .query('(fantasy_pos != "") and active')
             .drop(columns=['fantasy_positions', 'active'])
-        )      
+        )
+        duration = time.time() - start_time
+        print(f'Player DF build took {duration:.2} seconds')
         self._players = df
         return df
 
