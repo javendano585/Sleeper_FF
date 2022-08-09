@@ -16,6 +16,7 @@ def get_valid_leagues() -> list:
     return valid_leagues
 
 app = Dash(__name__, suppress_callback_exceptions=True)
+server = app.server
 league_analyzer: SleeperLeagueAnalyzer = None 
 
 app.layout = html.Div([
