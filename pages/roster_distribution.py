@@ -60,6 +60,7 @@ def layout(league_analyzer: SleeperLeagueAnalyzer):
     if league_analyzer is None: return html.Div()
 
     df = league_analyzer.get_roster_distribution()
+    print('roster_distribution tab')
 
     layout = html.Div([
         dash_table.DataTable(

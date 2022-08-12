@@ -3,7 +3,7 @@ from dash.dependencies import Input, Output
 
 
 from ff_league_analyzer.ff_league_analyzer import SleeperLeagueAnalyzer
-from pages import home, roster_distribution
+from pages import home, roster_distribution, weekly_scoring
 
 def get_data_for_dash(league_id: str) -> SleeperLeagueAnalyzer:
     if league_id == '': return None
@@ -11,6 +11,7 @@ def get_data_for_dash(league_id: str) -> SleeperLeagueAnalyzer:
 
 def get_valid_leagues() -> list:
     valid_leagues = [
+        {'label': 'Elite FF 2021', 'value': '736885905629024256'},
         {'label': 'USFL 2022', 'value': '786691248676257792'}
     ]
     return valid_leagues
@@ -56,7 +57,8 @@ def update_home_div(value):
             id='league-tabs', value='tab-home',
             children=[
                 dcc.Tab(label='Home', value='tab-home', children=[home.layout(league_analyzer)]),
-                dcc.Tab(label='Roster Distribution', value='tab-distribution', children=[roster_distribution.layout(league_analyzer)])
+                dcc.Tab(label='Roster Distribution', value='tab-distribution', children=[roster_distribution.layout(league_analyzer)]),
+                dcc.Tab(label='Weekly Scoring', value='tab-week-scoring', children=[weekly_scoring.layout(league_analyzer)])
             ]
         )
     ]

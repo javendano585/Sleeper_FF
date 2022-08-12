@@ -1,8 +1,10 @@
+import asyncio
 from dataclasses import dataclass, field
 from datetime import date
 import json
 from pathlib import Path
 import pickle
+from re import L
 import time
 from typing import Any
 
@@ -13,6 +15,7 @@ class SleeperLeague:
     league_id: str
     name: str = field(init=False)
     season: str = field(init=False)
+    current_week: int = field(init=False)
     sleeper_league: League = field(init=False)
 
     league_info: dict = field(default_factory=dict)
@@ -101,7 +104,14 @@ class SleeperLeague:
         self.league_info = league_info
         self.name = league_info.get('name', '')
         self.season = league_info.get('season', '')
+        self.current_week = int(league_info.get('settings', {}).get('leg', 0))
         self.starting_positions = [pos for pos in league_info['roster_positions'] if pos != 'BN']
+
+        roster = list(set(self.starting_positions))
+        if ('DL' in roster) and ('LB' in roster): roster.insert(roster.index('LB'), 'DL/LB')
+        if ('LB' in roster) and ('CB' in roster): roster.insert(roster.index('LB'), 'LB/DB')
+        if 'FLEX' in roster: roster.remove('FLEX')
+        self.ordered_roster_positions = roster
 
     def _pull_players(self) -> None:
         print('Pulling players from Sleeper API.')
@@ -124,5 +134,24 @@ class SleeperLeague:
     def _pull_users(self) -> None:
         self.users = self.sleeper_league.get_users()
 
+    def __pull_single_week_mathcup__(self, week: int) -> dict:
+        return self.sleeper_league.get_matchups(week)
+
+    async def __pull_matchups_async(self) -> dict:
+        weeks = range(1, self.current_week + 1)
+        loop = asyncio.get_running_loop()
+        futures = [loop.run_in_executor(None, self.__pull_single_week_mathcup__, i)  for i in weeks]
+        matchups = await asyncio.gather(*futures)
+        return dict(zip(weeks, matchups))
+
     def _pull_matchups(self) -> None:
-        self.matchups = {week: self.sleeper_league.get_matchups(week) for week in range(1, 19)}
+        # self.matchups = asyncio.run(self.__pull_matchups_async())
+        if asyncio._get_running_loop() is None:
+            print('Pulling matchups async.')
+            self.matchups = asyncio.run(self.__pull_matchups_async())
+        else:
+            print('Pulling matchups non-async.')
+            self._pull_matchups_nonasync()
+
+    def _pull_matchups_nonasync(self) -> None:
+        self.matchups = {week: self.sleeper_league.get_matchups(week) for week in range(1, self.current_week + 1)}

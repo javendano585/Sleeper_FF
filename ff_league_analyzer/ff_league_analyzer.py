@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
@@ -22,7 +23,7 @@ class SleeperLeagueAnalyzer:
     _teams: pd.DataFrame = field(init=False)
     _users: pd.DataFrame = field(init=False)
     
-    _ordered_roster_positions = ('QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DL', 'DL/LB', 'LB', 'DB/LB', 'DB')
+    # _ordered_roster_positions = ('QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DL', 'DL/LB', 'LB', 'DB/LB', 'DB')
 
     def __post_init__(self):
         self.league = SleeperLeague(self.league_id)
@@ -70,9 +71,82 @@ class SleeperLeagueAnalyzer:
     def league_info(self) -> str:
         return self.league.league_description
 
+    def _roster_distribution(self, week: pd.DataFrame) -> Counter:
+        player_pos_map = dict(zip(self.df_players.player_id, self.df_players.fantasy_pos))
+
+        starters = set(week.starters)
+        bench_points = 0
+        valid_starters = 0
+        for player, points in week.players_points.items():
+            if player not in starters:
+                bench_points += points
+            elif points > 0:
+                valid_starters += 1
+        
+        ignore_players = ['0']
+        start_pos_order = [pos.lower() for pos in pd.unique(self.league.starting_positions).tolist()]
+        pos_order = [pos.lower() for pos in self.league.ordered_roster_positions]
+        # start_pos = Counter({'start_' + pos: 0 for pos in start_pos_order})
+        # roster_pos = Counter({'roster_' + pos: 0 for pos in pos_order})
+        starters_score = Counter({'start_' + pos: 0 for pos in start_pos_order})
+        pos_score = Counter({pos + '_score': 0 for pos in pos_order})
+        
+        roster_stats = Counter({'bench_points': bench_points, 'active_starters': valid_starters})
+        for pos, score in zip(self.league.starting_positions, week.starters_points):
+            starters_score.update({('start_' + pos.lower()): score})
+        # start_pos.update(Counter(['start_' + player_pos_map.get(starter, '').lower() for starter in starters if starter not in ignore_players]))
+        # roster_pos.update(Counter(['roster_' + player_pos_map.get(player, '').lower() for player in week.players if player not in ignore_players]))
+        pos_scores = [(player_pos_map.get(player,'').lower() + '_score', score)
+                          for player, score in week.players_points.items()
+                          if (player not in ignore_players)]
+        pos_score.update(pd.DataFrame(pos_scores, columns=['player', 'score']).groupby('player').score.sum().to_dict())
+        
+        return_counter = Counter()
+        return_counter.update(roster_stats)
+        return_counter.update(starters_score)
+        # return_counter.update(start_pos)
+        # return_counter.update(roster_pos)
+        return_counter.update(pos_score)
+        return return_counter
+
+    def _adjust_weekly_data_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        start_columns = ['roster_id', 'week', 'matchup_id', 'points', 'bench_points', 'active_starters']
+        drop_columns = ['starters', 'starters_points', 'players', 'players_points', 'custom_points']
+        new_column_order = start_columns + [col for col in df.columns if col not in (start_columns + drop_columns)]
+        df = df[new_column_order]
+        return df
+
     def build_matchups_df(self) -> pd.DataFrame:
-        # TODO
-        pass
+        start_time = time.time()
+        matchups_dict = self.league.get_data('matchups')
+        duration = time.time() - start_time
+        print(f'Get matchups dict in {duration:.2} seconds.')
+        df_list = []
+        for week, week_dict in matchups_dict.items():
+            df_week = (
+                pd.DataFrame(week_dict)
+                .assign(week = week,
+                        matchup_id = lambda df: df.matchup_id.fillna(-1).astype(np.int8))
+                .pipe(lambda df: df.assign(**pd.DataFrame(df.apply(self._roster_distribution, axis=1).tolist())))
+                .pipe(self._adjust_weekly_data_columns)
+            )
+            df_list.append(df_week)
+        df_scores = pd.concat(df_list).reset_index(drop=True)
+        df = (
+            df_scores        
+            .merge(df_scores[['week', 'matchup_id', 'roster_id', 'points']], on=['week', 'matchup_id'], suffixes=('', '_opp'), how='left')
+            .rename(columns={'roster_id_opp': 'opponent_id', 'points_opp': 'opp_points'})
+            .query('roster_id != opponent_id')
+            .assign(result = lambda df: np.select([df.matchup_id == -1,
+                                                df.points > df.opp_points, 
+                                                df.points == df.opp_points, 
+                                                df.points < df.opp_points],
+                                                ['No matchup', 'Win', 'Tie', 'Loss']),
+                    opponent_id = lambda df: np.where(df.matchup_id == -1, -1, df.opponent_id),
+                    opp_points = lambda df: np.where(df.matchup_id == -1, 0, df.opp_points))
+        )
+        self._matchups = df
+        return df
 
     @staticmethod
     def _drop_unused_positions(positions: list) -> list:
@@ -173,7 +247,7 @@ class SleeperLeagueAnalyzer:
         return df
 
     def _sort_roster_distribution_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        new_columns = [col for col in self._ordered_roster_positions if col in df.columns]
+        new_columns = [col for col in self.league.ordered_roster_positions if col in df.columns]
         df = df[['team_name', 'display_name', 'record'] + new_columns]
         df.columns.name = None
         return df
@@ -206,6 +280,24 @@ class SleeperLeagueAnalyzer:
             teams
             .merge(users.rename(columns={'user_id': 'owner_id'}), on='owner_id', how='left')
             [['team_name', 'display_name', 'wins', 'losses', 'ties', 'points_for', 'points_against', 'rostered']]
-            .sort_values(['points_for', 'points_against'])
+            .sort_values(['points_for', 'points_against'], ascending=False)
         )
+        return df
+
+    def get_weekly_scoring_by_position(self) -> pd.DataFrame:
+        matchups = self.df_matchups
+        users = self.df_users
+        teams = self.df_teams
+        df = (
+            matchups
+            .melt(id_vars=['roster_id', 'week'], 
+                  value_vars=[col for col in matchups.columns if 'start_' in col], 
+                  var_name='pos', 
+                  value_name='start_points')
+            .assign(pos = lambda df: df.pos.str.replace('start_', '').str.upper())
+            .merge(teams[['owner_id', 'roster_id']], on='roster_id', how='left')
+            .merge(users.rename(columns={'user_id': 'owner_id'})[['owner_id', 'team_name']], 
+                   on='owner_id', how='left')
+            .sort_values(['roster_id', 'week'])
+    )
         return df
