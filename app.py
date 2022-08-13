@@ -1,6 +1,6 @@
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output
-
+import os
 
 from ff_league_analyzer.ff_league_analyzer import SleeperLeagueAnalyzer
 from pages import home, roster_distribution, weekly_scoring
@@ -65,4 +65,5 @@ def update_home_div(value):
     return home_div
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    debug_at_home = os.environ['COMPUTERNAME'] == 'LAPTOP-2J01O16G'
+    app.run_server(debug=debug_at_home)
