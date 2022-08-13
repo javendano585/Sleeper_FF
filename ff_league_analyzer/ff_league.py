@@ -89,10 +89,11 @@ class SleeperLeague:
     
     def _get_players_filename(self) -> Path:
         today = date.today().strftime(f'%Y%m%d')
-        temp_folder = Path('.') / 'data'
+        data_folder = Path('.') / 'data'
+        data_folder.mkdir(exist_ok=True)
         current_players_file = f'sleeper_players_{today}.pickle'
-        self._clear_old_player_files(temp_folder, current_players_file)
-        return temp_folder / current_players_file
+        self._clear_old_player_files(data_folder, current_players_file)
+        return data_folder / current_players_file
 
     def _clear_old_player_files(self, folder: Path, active_file: str) -> None:
         for x in folder.glob('sleeper_players_*.*'):
