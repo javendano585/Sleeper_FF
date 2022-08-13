@@ -1,0 +1,17 @@
+th.dash-header div{
+    display:flex;
+}
+  
+th.dash-header div span.column-header-name {
+    order: 1;
+}
+  
+th.dash-header div.column-actions {
+    order: 2;
+    width: 5%;
+    text-align: right;
+}
+  
+span.column-header-name:after {
+    content:"\00a0";
+}

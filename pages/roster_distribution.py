@@ -20,7 +20,7 @@ def get_style_cell_conditional(df: pd.DataFrame) -> list:
     width_mapping = {
         'team_name': '15%',
         'display_name': '10%',
-        'record': '10%'
+        'record': '5%'
     }
     widths = [{'if': {'column_id': col}, 'width': width} for col, width in width_mapping.items()]
     return widths
@@ -60,14 +60,13 @@ def layout(league_analyzer: SleeperLeagueAnalyzer):
     if league_analyzer is None: return html.Div()
 
     df = league_analyzer.get_roster_distribution()
-    print('roster_distribution tab')
 
     layout = html.Div([
         dash_table.DataTable(
             df.to_dict('records'),
             columns=get_external_column_names(df),
             sort_action='native',
-            fill_width=True,
+            fill_width=False,
             style_cell={
                 'width': '5%'
             },

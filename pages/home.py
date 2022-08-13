@@ -57,7 +57,7 @@ def layout(league_analyzer: SleeperLeagueAnalyzer):
             df.to_dict('records'),
             columns=get_external_column_names(df),
             sort_action='native',
-            fill_width=True,
+            fill_width=False,
             style_cell={
                 'width': '5%'
             },

@@ -2,8 +2,11 @@ from collections import Counter
 from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
+import plotly.express as px
+from plotly.graph_objects import Figure
 import time
 
+from typing import Tuple
 from .ff_league import SleeperLeague
 
 def _get_roster_spot(roster: pd.Series) -> str:
@@ -22,6 +25,8 @@ class SleeperLeagueAnalyzer:
     _rosters: pd.DataFrame = field(init=False)
     _teams: pd.DataFrame = field(init=False)
     _users: pd.DataFrame = field(init=False)
+    _data_frames: dict = field(init=False, default_factory=dict)
+    _figures: dict = field(init=False, default_factory=dict)
     
     # _ordered_roster_positions = ('QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DL', 'DL/LB', 'LB', 'DB/LB', 'DB')
 
@@ -149,6 +154,22 @@ class SleeperLeagueAnalyzer:
         return df
 
     @staticmethod
+    def _clean_player_info(player_info: dict) -> dict:
+        ignore_keys = {
+            'espn_id', 'fantasy_data_id', 'gsis_id', 'pandascore_id', 'rotowire_id', 'rotoworld_id', 
+            'sleeper_id', 'sportradar_id', 'stats_id', 'swish_id', 'yahoo_id', 
+            'high_school', 'college',
+            'birth_city', 'birth_country', 'birth_date', 'birth_state', 
+            'hashtag', 'height', 'injury_body_part', 'injury_notes', 'injury_start_date', 
+            'news_updated', 'number',
+            'practice_description', 'practice_participation', 
+            'search_full_name', 'search_first_name', 'search_last_name', 'search_rank', 'sport', 
+            'weight'
+        }
+        cleaned_player_info = {k: v for k,v in player_info.items() if k not in ignore_keys}
+        return cleaned_player_info
+
+    @staticmethod
     def _drop_unused_positions(positions: list) -> list:
         positions = [pos for pos in positions if pos[0] != 'O']
         
@@ -161,19 +182,23 @@ class SleeperLeagueAnalyzer:
     def build_players_df(self) -> pd.DataFrame:
         players_dict = self.league.get_data('players')
         start_time = time.time()
+        players_cleaned = {player: self._clean_player_info(player_info) 
+                            for player, player_info 
+                            in players_dict.items() 
+                            if player_info.get('active')}
         df = (
-            pd.DataFrame(players_dict)
+            pd.DataFrame(players_cleaned)
             .T
             .rename_axis('sleeper_id')
             .reset_index()
-            .drop(columns=['hashtag', 'news_updated', 'sport',
-                            'sleeper_id', 'pandascore_id', 'rotowire_id', 'espn_id', 'yahoo_id', 
-                            'sportradar_id', 'stats_id', 'fantasy_data_id', 'swish_id', 'gsis_id', 'rotoworld_id',
-                            'birth_date', 'birth_city', 'birth_state', 'birth_country', 
-                            'height', 'weight', 'high_school', 'college',
-                            'search_first_name', 'search_last_name', 'search_full_name'])
+            # .drop(columns=['hashtag', 'news_updated', 'sport',
+            #                'sleeper_id', 'pandascore_id', 'rotowire_id', 'espn_id', 'yahoo_id', 
+            #                'sportradar_id', 'stats_id', 'fantasy_data_id', 'swish_id', 'gsis_id', 'rotoworld_id',
+            #                'birth_date', 'birth_city', 'birth_state', 'birth_country', 
+            #                'height', 'weight', 'high_school', 'college',
+            #                'search_first_name', 'search_last_name', 'search_full_name'])
             .assign(fantasy_positions = lambda df: df.fantasy_positions.apply(lambda d: d if isinstance(d, list) else []),
-                    fantasy_pos = lambda df: df.fantasy_positions.apply(list).apply(SleeperLeagueAnalyzer._drop_unused_positions).apply('/'.join),
+                    fantasy_pos = lambda df: df.fantasy_positions.apply(list).apply(self._drop_unused_positions).apply('/'.join),
                     active = lambda df: df.active.fillna('False').astype(bool)
                     )
             .query('(fantasy_pos != "") and active')
@@ -253,6 +278,9 @@ class SleeperLeagueAnalyzer:
         return df
 
     def get_roster_distribution(self) -> pd.DataFrame:
+        if 'roster-distribution' in self._data_frames:
+            return self._data_frames['roster-distribution']
+
         users = self.df_users
         teams = self.df_teams
         rosters = self.df_rosters
@@ -271,9 +299,13 @@ class SleeperLeagueAnalyzer:
             .assign(record = lambda df: df.wins.astype(str) + '-' + df.losses.astype(str) + '-' + df.ties.astype(str))
             .pipe(self._sort_roster_distribution_columns)
         )
+        self._data_frames['roster-distribution'] = df
         return df
 
     def get_general_team_data(self) -> pd.DataFrame:
+        if 'team-general' in self._data_frames:
+            return self._data_frames['team-general']
+
         users = self.df_users
         teams = self.df_teams
         df = (
@@ -282,15 +314,21 @@ class SleeperLeagueAnalyzer:
             [['team_name', 'display_name', 'wins', 'losses', 'ties', 'points_for', 'points_against', 'rostered']]
             .sort_values(['points_for', 'points_against'], ascending=False)
         )
+        self._data_frames['team-general'] = df
         return df
 
-    def get_weekly_scoring_by_position(self) -> pd.DataFrame:
+    def get_weekly_scoring_by_position(self) -> Tuple[pd.DataFrame, Figure]:
+        if 'weekly_scoring' in self._data_frames:
+            return self._data_frames['weekly_scoring'], self._figures['weekly_scoring']
+
         matchups = self.df_matchups
         users = self.df_users
         teams = self.df_teams
+        start_time = time.time()
         df = (
             matchups
-            .melt(id_vars=['roster_id', 'week'], 
+            .assign(week_score = lambda df: df.filter(like='start_', axis=1).sum(axis=1))
+            .melt(id_vars=['roster_id', 'week', 'week_score'], 
                   value_vars=[col for col in matchups.columns if 'start_' in col], 
                   var_name='pos', 
                   value_name='start_points')
@@ -298,6 +336,24 @@ class SleeperLeagueAnalyzer:
             .merge(teams[['owner_id', 'roster_id']], on='roster_id', how='left')
             .merge(users.rename(columns={'user_id': 'owner_id'})[['owner_id', 'team_name']], 
                    on='owner_id', how='left')
-            .sort_values(['roster_id', 'week'])
-    )
-        return df
+            .sort_values(['week', 'week_score', 'roster_id'])
+        )
+        duration = time.time() - start_time
+        print(f'Weekly Scoring DF build took {duration:.2} seconds')
+
+        fig = px.bar(df, 
+                 x='start_points', y='team_name', color='pos', 
+                 hover_name='team_name',
+                 hover_data={'week': True, 'pos': True, 'start_points': True, 'team_name': False},
+                 labels={'week': 'Week', 'pos': 'Position', 'start_points': 'Points'},
+                 animation_frame='week',
+                 title='Scoring by Position')
+        fig.update_layout(
+            xaxis_title=None,
+            yaxis_title=None,
+            legend_title=None
+        )
+
+        self._data_frames['weekly_scoring'] = df
+        self._figures['weekly_scoring'] = fig
+        return df, fig
