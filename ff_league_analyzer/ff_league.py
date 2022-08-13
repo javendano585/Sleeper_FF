@@ -98,6 +98,8 @@ class SleeperLeague:
         for x in folder.glob('sleeper_players_*.*'):
             if x.is_file() and x.name != active_file:
                 x.unlink()
+            if x.is_file() and x.name == active_file and x.stat().st_size == 0:
+                x.unlink()
     
     def _pull_league_data(self) -> None:
         league_info = self.sleeper_league.get_league()
