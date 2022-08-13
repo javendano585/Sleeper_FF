@@ -135,3 +135,6 @@ venv
 *.pyc
 .DS_Store
 .env
+
+# Sleeper FF
+/data/sleeper_players*.pickle
