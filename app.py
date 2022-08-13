@@ -1,4 +1,3 @@
-from turtle import width
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output, State
 import os
