@@ -23,7 +23,7 @@ def layout(league_analyzer: SleeperLeagueAnalyzer):
     # )
 
     layout = html.Div([
-        dcc.Graph(figure=fig_summary),
-        dcc.Graph(figure=fig_by_pos)
+        dcc.Graph(figure=fig_by_pos),
+        dcc.Graph(figure=fig_summary)
     ])
     return layout
