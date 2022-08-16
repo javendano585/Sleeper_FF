@@ -6,7 +6,8 @@ from ff_league_analyzer.ff_league_analyzer import SleeperLeagueAnalyzer
 def layout(league_analyzer: SleeperLeagueAnalyzer):
     if league_analyzer is None: return html.Div()
 
-    _, fig = league_analyzer.get_weekly_scoring_by_position()
+    fig_summary = league_analyzer.get_weekly_summary_plot()
+    fig_by_pos = league_analyzer.get_weekly_scoring_by_position_plot()
 
     # fig = px.bar(df, 
     #              x='start_points', y='team_name', color='pos', 
@@ -22,6 +23,7 @@ def layout(league_analyzer: SleeperLeagueAnalyzer):
     # )
 
     layout = html.Div([
-        dcc.Graph(figure=fig)
+        dcc.Graph(figure=fig_summary),
+        dcc.Graph(figure=fig_by_pos)
     ])
     return layout

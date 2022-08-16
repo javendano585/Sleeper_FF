@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from plotly.graph_objects import Figure
+import plotly.graph_objects as go
 import time
 
 from typing import Tuple
@@ -317,9 +317,9 @@ class SleeperLeagueAnalyzer:
         self._data_frames['team-general'] = df
         return df
 
-    def get_weekly_scoring_by_position(self) -> Tuple[pd.DataFrame, Figure]:
+    def get_weekly_scoring(self) -> pd.DataFrame:
         if 'weekly_scoring' in self._data_frames:
-            return self._data_frames['weekly_scoring'], self._figures['weekly_scoring']
+            return self._data_frames['weekly_scoring']
 
         matchups = self.df_matchups
         users = self.df_users
@@ -329,31 +329,112 @@ class SleeperLeagueAnalyzer:
             matchups
             .assign(week_score = lambda df: df.filter(like='start_', axis=1).sum(axis=1))
             .melt(id_vars=['roster_id', 'week', 'week_score'], 
-                  value_vars=[col for col in matchups.columns if 'start_' in col], 
-                  var_name='pos', 
-                  value_name='start_points')
+                value_vars=[col for col in matchups.columns if 'start_' in col], 
+                var_name='pos', 
+                value_name='start_points')
             .assign(pos = lambda df: df.pos.str.replace('start_', '').str.upper())
             .merge(teams[['owner_id', 'roster_id']], on='roster_id', how='left')
             .merge(users.rename(columns={'user_id': 'owner_id'})[['owner_id', 'team_name']], 
-                   on='owner_id', how='left')
+                on='owner_id', how='left')
             .sort_values(['week', 'week_score', 'roster_id'])
         )
         duration = time.time() - start_time
         print(f'Weekly Scoring DF build took {duration:.2} seconds')
+        self._data_frames['weekly_scoring'] = df
+        return df
 
-        fig = px.bar(df, 
-                 x='start_points', y='team_name', color='pos', 
-                 hover_name='team_name',
-                 hover_data={'week': True, 'pos': True, 'start_points': True, 'team_name': False},
-                 labels={'week': 'Week', 'pos': 'Position', 'start_points': 'Points'},
-                 animation_frame='week',
-                 title='Scoring by Position')
+    def get_weekly_summary_plot(self) -> go.Figure:
+        if 'weekly_scoring_summary' in self._figures:
+            return self._figures['weekly_scoring_summary']
+
+        df = (
+            self.get_weekly_scoring()
+            .groupby(['team_name', 'week'], as_index=False)
+            .agg(week_score=('start_points', 'sum'))
+            .assign(total_score = lambda df: df.groupby(['team_name']).week_score.transform('sum'))
+            .sort_values(['total_score', 'week'])
+        )
+
+        start_time = time.time()
+        fig = px.line(
+            df, 
+            x='week', y='week_score', color='team_name', 
+            hover_name='team_name',
+            hover_data={'week': True, 'week_score': True, 'team_name': False},
+            labels={'week': 'Week', 'week_score': 'Score', 'team_name': 'Team'},
+            title='Scoring by Week'
+        )
+        duration = time.time() - start_time
+        print(f'Weekly Summary Figure build took {duration:.2} seconds')
+
+        # Switching to go.Figure, as it's currently building 25x faster than px.line.
+        # https://github.com/plotly/plotly.py/issues/1743
+        start_time = time.time()
+        fig = go.Figure(
+            layout_yaxis_range=[0, round(df.week_score.max() + 10, 1)],
+        )
+        for team in reversed(df.team_name.unique().tolist()):
+            dff = df.query('team_name == @team')
+            fig.add_trace(go.Scatter(
+                x=dff.week,
+                y=dff.week_score,
+                mode='lines',
+                name=team,
+                hovertemplate= f'<b>{team}' + '</b><br><br>Week: %{x}<br>Score: %{y}<extra></extra>',
+                line=dict(width=0.75)
+            ))
+        fig.update_layout(
+            title='Scoring by Week'
+        )
+        duration2 = time.time() - start_time
+        print(f'Weekly Summary go.Figure build took {duration2:.2} seconds')
+        print(f'go.Figure is {(duration / duration2):.2f}x faster than px.line.')
+
+        self._figures['weekly_scoring_summary'] = fig
+        return fig
+
+    def get_weekly_scoring_by_position_plot(self) -> go.Figure:
+        if 'weekly_scoring_by_pos' in self._figures:
+            return self._figures['weekly_scoring_by_pos']
+
+        df = self.get_weekly_scoring()
+
+        start_time = time.time()
+        fig = px.bar(
+            df, 
+            x='start_points', y='team_name', color='pos', 
+            hover_name='team_name',
+            hover_data={'week': True, 'pos': True, 'start_points': True, 'team_name': False},
+            labels={'week': 'Week', 'pos': 'Position', 'start_points': 'Points'},
+            animation_frame='week',
+            title='Scoring by Position'
+        )
         fig.update_layout(
             xaxis_title=None,
             yaxis_title=None,
             legend_title=None
         )
+        duration = time.time() - start_time
+        print(f'Weekly Scoring by Pos Figure build took {duration:.2} seconds')
 
-        self._data_frames['weekly_scoring'] = df
-        self._figures['weekly_scoring'] = fig
-        return df, fig
+        # start_time = time.time()
+        # fig = go.Figure(
+        #     layout_yaxis_range=[0, round(df.week_score.max() + 10, 1)],
+        # )
+        # for pos in reversed(df.pos.unique().tolist()):
+        #     dff = df.query('pos == @pos')
+        #     fig.add_trace(go.Bar(
+        #         x=dff.start_points,
+        #         y=dff.team_name,
+        #         name=pos,
+        #         hovertemplate= '<b>%{team_name}</b><br><br>Week: %{x}<br>Score: %{y}<extra></extra>'
+        #     ))
+        # fig.update_layout(
+        #     title='Scoring by Position'
+        # )
+        # duration2 = time.time() - start_time
+        # print(f'Weekly Scoring go.Figure build took {duration2:.2} seconds')
+        # print(f'go.Figure is {(duration / duration2):.2f}x faster than px.line.')
+
+        self._figures['weekly_scoring_by_pos'] = fig
+        return fig
