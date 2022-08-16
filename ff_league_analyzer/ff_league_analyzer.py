@@ -355,17 +355,17 @@ class SleeperLeagueAnalyzer:
             .sort_values(['total_score', 'week'])
         )
 
-        start_time = time.time()
-        fig = px.line(
-            df, 
-            x='week', y='week_score', color='team_name', 
-            hover_name='team_name',
-            hover_data={'week': True, 'week_score': True, 'team_name': False},
-            labels={'week': 'Week', 'week_score': 'Score', 'team_name': 'Team'},
-            title='Scoring by Week'
-        )
-        duration = time.time() - start_time
-        print(f'Weekly Summary Figure build took {duration:.2} seconds')
+        # start_time = time.time()
+        # fig = px.line(
+        #     df, 
+        #     x='week', y='week_score', color='team_name', 
+        #     hover_name='team_name',
+        #     hover_data={'week': True, 'week_score': True, 'team_name': False},
+        #     labels={'week': 'Week', 'week_score': 'Score', 'team_name': 'Team'},
+        #     title='Scoring by Week'
+        # )
+        # duration = time.time() - start_time
+        # print(f'Weekly Summary Figure build took {duration:.2} seconds')
 
         # Switching to go.Figure, as it's currently building 25x faster than px.line.
         # https://github.com/plotly/plotly.py/issues/1743
@@ -388,7 +388,7 @@ class SleeperLeagueAnalyzer:
         )
         duration2 = time.time() - start_time
         print(f'Weekly Summary go.Figure build took {duration2:.2} seconds')
-        print(f'go.Figure is {(duration / duration2):.2f}x faster than px.line.')
+        # print(f'go.Figure is {(duration / duration2):.2f}x faster than px.line.')
 
         self._figures['weekly_scoring_summary'] = fig
         return fig
